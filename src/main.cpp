@@ -17,7 +17,21 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <BLEPeripheral.h>
+//#include "nrf_gpio.h"
+//#include "ArduinoLowPower.h"
 
+// for nrf51_dk
+#define P0_21 4 // = P0_21
+#define P0_22 5 // = P0_22
+#define P0_23 6 // = P0_23
+
+// for waveshare_ble400
+#define P0_21 21 // = P0_21
+#define P0_22 22 // = P0_22
+#define P0_23 23 // = P0_23
+
+#define LED_PIN P0_21
+#define SENSOR_PIN P0_22
 
 
 BLEPeripheral blePeripheral = BLEPeripheral();
@@ -39,12 +53,53 @@ void configure_ram_retention(void)
 
 }
 
+void blink() {
+  //state = !state;
+}
+
+void deepSleep() {
+	//Enter in systemOff mode only when no EasyDMA transfer is active
+	//this is achieved by disabling all peripheral that use it
+	/*
+	NRF_UARTE0->ENABLE = UARTE_ENABLE_ENABLE_Disabled;								//disable UART
+	NRF_SAADC ->ENABLE = (SAADC_ENABLE_ENABLE_Disabled << SAADC_ENABLE_ENABLE_Pos);	//disable ADC
+	NRF_PWM0  ->ENABLE = (PWM_ENABLE_ENABLE_Disabled << PWM_ENABLE_ENABLE_Pos);		//disable all pwm instance
+	NRF_PWM1  ->ENABLE = (PWM_ENABLE_ENABLE_Disabled << PWM_ENABLE_ENABLE_Pos);
+	NRF_PWM2  ->ENABLE = (PWM_ENABLE_ENABLE_Disabled << PWM_ENABLE_ENABLE_Pos);
+	NRF_TWIM1 ->ENABLE = (TWIM_ENABLE_ENABLE_Disabled << TWIM_ENABLE_ENABLE_Pos);	//disable TWI Master
+	NRF_TWIS1 ->ENABLE = (TWIS_ENABLE_ENABLE_Disabled << TWIS_ENABLE_ENABLE_Pos);	//disable TWI Slave
+*/
+  //configure_ram_retention();
+	//Enter in System OFF mode
+
+  //enable wakeup by gpio;
+  //nrf_gpio_cfg_sense_input(g_APinDescription[SENSOR_PIN].ulPin, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW)
+  //nrf_gpio_cfg_sense_input();
+  attachInterrupt(SENSOR_PIN, blink, RISING);
+
+	sd_power_system_off();
+
+	/*Only for debugging purpose, will not be reached without connected debugger*/
+  //  while(1);
+}
+
+int32_t temperature_data_get(void)
+{
+    int32_t temp;
+    uint32_t err_code;
+
+    err_code = sd_temp_get(&temp);
+
+    return temp/4;
+}
 
 void setup() {
 
-	configure_ram_retention();
-
 	blePeripheral.setLocalName("GasMeter");
+
+  pinMode(LED_PIN, OUTPUT);
+
+  pinMode(SENSOR_PIN, INPUT_PULLUP);
 
 	// Set the GPIOTE PORT event as interrupt source, and enable interrupts for GPIOTE
 	//NRF_GPIOTE->INTENSET = GPIOTE_INTENSET_PORT_Msk;
@@ -52,21 +107,29 @@ void setup() {
 
 }
 
+int led_status = 0;
+
 void loop() {
+/*
+  while (digitalRead(SENSOR_PIN)){
+    delay(1);
+  }
+*/
   i++;
 	char data[30];
-	unsigned char len = sprintf(data, "{ data: %ld }", i);
+	unsigned char len = sprintf(data, "{ data: %ld, uptime: %ld }", i, temperature_data_get());
 	unsigned char *udata = (unsigned char*)(&data);
 	//const unsigned char sudata[len];
 	// = &udata;
+  led_status = !led_status;
 
 	blePeripheral.end();
   blePeripheral.setManufacturerData(udata, len);
   blePeripheral.begin();
 
-  delay(1000);
-	__WFE();
-	__SEV();
-	__WFE();
+  digitalWrite(LED_PIN, led_status);
 
+  delay(1000);
+  //deepSleep();
+  //deepSleep();
 }
